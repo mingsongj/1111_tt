@@ -1,0 +1,12 @@
+string command
+float64 time_delay
+int64 cycle
+int64 p_gain
+int64 i_gain
+int64 d_gain
+int64 amp_a
+int64 amp_b
+int64 offset_a
+int64 offset_b
+---
+string resp_msg

@@ -1,0 +1,14 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/turtle_ros/install/motor_srv/lib/python3.6/site-packages",
+        "/turtle_ros/install/example_interfaces/lib/python3.6/site-packages",
+        "/turtle_ros/install/dynamixel_sdk/lib/python3.6/site-packages",
+        "/opt/ros/humble/install/lib/python3.6/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/turtle_ros/install/motor_srv/lib/python3.6/site-packages",
+        "/turtle_ros/install/example_interfaces/lib/python3.6/site-packages",
+        "/turtle_ros/install/dynamixel_sdk/lib/python3.6/site-packages",
+        "/opt/ros/humble/install/lib/python3.6/site-packages"
+    ]
+}

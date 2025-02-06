@@ -1,0 +1,12 @@
+# creates symbolic names or aliases for USB devices based on specific product attributes
+# these device attibutes can be found using 'lsusb' or 'udevadm info -a -n /dev/ttyUSB0'
+# use ChatGPT to get the vender ID. 
+# replace /dev/ttyUSB0 with the name of the device you wish to inspect 
+# this file must be copied onto the jetson nano's /etc/udev/rules.d/ directory
+# to implement these new rules, udevadm should be reset; use 'sudo udevadm control --reload'
+# these USB device attributes are product specific, so new devices require updated rules 
+# you can check that these symbolic names are being mapped properly using 'udevadm monitor' and 'ls -l /dev/ | grep USB'
+# double check the attributes in your rules if this is outputting odd behavior
+# find_device_path.py looks for the symbolic names ttyUSB_Arduino and ttyUSB_MotorControl, so if they are changed that file must also be updated
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="arduino"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", SYMLINK+="motor"

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="https://jiefengsun.github.iom" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>dynamixel_sdk</name>
+  <version>3.7.51</version>
+  <description>Dynamixel SDK 3. python package</description>
+  <maintainer email="jiefeng.sun@asu.edu">root</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+ 
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

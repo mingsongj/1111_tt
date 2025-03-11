@@ -1,11 +1,17 @@
 ### Summary
 new new 
-
+source install/setup.bash
 sudo usermod -a -G dialout admin
-`sudo chmod 777 /dev/ttyUSB0`
-`ls -l /dev/ttyUSB*`
+``
+`ls -l /dev/ttyUSB*`sudo chmod 777 /dev/ttyUSB0
+
+ros2 topic pub --once /arduino/command std_msgs/msg/String "{data: 'i,5'}"
 
 ros2 launch realsense2_camera rs_launch.py enable_gyro:=true enable_accel:=true
+ros2 launch isaac_ros_examples isaac_ros_examples.launch.py launch_fragments:=realsense_stereo_rect,visual_slam interface_specs_file:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_visual_slam/quickstart_interface_specs.json base_frame:=camera_link camera_optical_frames:="['camera_infra1_optical_frame', 'camera_infra2_optical_frame']"
+
+ros2 launch isaac_ros_visual_slam isaac_ros_visual_slam_realsense.launch.py enable_gyro:=true enable_accel:=true launch_fragments:=realsense_stereo_rect,visual_slam interface_specs_file:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_visual_slam/quickstart_interface_specs.json base_frame:=camera_link camera_optical_frames:="['camera_infra1_optical_frame', 'camera_infra2_optical_frame']"
+
 0````````````````````````````````````````````````````````````````### How to use container and ros (depreciated)
 This is only when we use this repo without using VSLAM
 0. Following the https://github.com/dusty-nv/jetson-containers/blob/master/docs/setup.md to add docker to user group and increase swap size
@@ -14,7 +20,6 @@ This is only when we use this repo without using VSLAM
 1. Next time, you just need to run `docker/start.sh` to start the same container
 2. Once the container starts, run VS-code, and go to `docker` extension, find the `turtle_noport`, right click to attach the current workspack. The container will install VS server, which takes a while for the first time.
 2. run `ros2_build.sh` to build the ros2 packages, and source bash files `source install/setup.sh`. 
-
 
 ### How to run the container in the issa_rom_common 
  Jiefeng: 

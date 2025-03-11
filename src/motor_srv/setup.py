@@ -42,6 +42,9 @@ setup(
             'RL_implementation = motor_srv.RL_implementation:main',
             "sinusoidal_goal_publisher = motor_srv.sinusoidal_goal_publisher:main",
             'RL_new = motor_srv.RL_new:main',
+            'jue_arduino_node = motor_srv.jue_arduino_node:main',
+            'robot_motion_tracker = motor_srv.robot_motion_tracker:main',
+            'COT_jue = motor_srv.COT_jue:main'
         ],
     },
 )

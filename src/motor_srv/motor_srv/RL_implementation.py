@@ -45,6 +45,9 @@ class MotorSRVNode(Node):
     def __init__(self):
         super().__init__('RL_implementation')
 
+        self.initial_gravity = None           # 用于记录第一次经过旋转和归一化后的重力方向
+        self.gravity_calib_matrix = None      # 校准旋转矩阵
+
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
@@ -56,6 +59,7 @@ class MotorSRVNode(Node):
         self.create_subscription(Imu, '/camera/accel/sample', self.accel_callback, sensor_qos)
         self.create_subscription(Twist, '/motor_commands', self.command_callback, sensor_qos)
         self.create_subscription(Float32MultiArray, '/dynamixel_status', self.dynamixel_callback, sensor_qos)
+        self.create_subscription(Float32MultiArray, '/arduino/height', self.height_callback, sensor_qos)
 
         self.publisher = self.create_publisher(Float32MultiArray, '/robot/motor_commands', 10)
 
@@ -65,6 +69,7 @@ class MotorSRVNode(Node):
         self.base_ang_vel = torch.zeros(3, device=self.device)
         self.projected_gravity = torch.zeros(3, device=self.device)
         self.commands = torch.zeros(3, device=self.device)
+        self.height = torch.zeros(1, device=self.device)
         self.dof_pos = torch.zeros(8, device=self.device)  # Relative positions
         self.last_dof_pos = torch.zeros(8, device=self.device)  # Store last position
         self.dof_vel = torch.zeros(8, device=self.device)  # Velocity computed from position differences
@@ -77,8 +82,8 @@ class MotorSRVNode(Node):
 
         # Load the policy model and configuration file
         self.policy = self.load_policy(
-            "src/mingsong_turtle_try/src/motor_srv/motor_srv/height_700.pt",
-            obs_dim=34,  # Observation dimension (34 for height changable model, 33 for height non-changable model.)
+            "src/mingsong_turtle_try/src/motor_srv/models/model_700.pt",
+            obs_dim=33,  # Observation dimension (34 for height changable model, 33 for height non-changable model.)
             action_dim=8,  # Action dimension
             actor_hidden_dims=[512, 256, 128],
             critic_hidden_dims=[512, 256, 128],
@@ -125,50 +130,143 @@ class MotorSRVNode(Node):
             2048 - (2048.0 * rad_value / np.pi)
         )
 
+    def compute_rotation_matrix(self, v_from, v_to):
+        """
+        计算将单位向量 v_from 旋转到 v_to 的旋转矩阵，使用 Rodrigues 公式。
+        """
+        # 标准化两个向量
+        v_from = v_from / np.linalg.norm(v_from)
+        v_to = v_to / np.linalg.norm(v_to)
+        
+        # 计算旋转轴（叉乘）
+        v = np.cross(v_from, v_to)
+        c = np.dot(v_from, v_to)
+        norm_v = np.linalg.norm(v)
+        
+        if norm_v < 1e-8:
+            # 如果 v_from 和 v_to 已经平行，则返回单位矩阵
+            return np.eye(3)
+        
+        # 构造叉乘的反对称矩阵
+        vx = np.array([
+            [0, -v[2], v[1]],
+            [v[2], 0, -v[0]],
+            [-v[1], v[0], 0]
+        ])
+        
+        # Rodrigues 公式
+        R = np.eye(3) + vx + vx.dot(vx) * ((1 - c) / (norm_v ** 2))
+        return R
 
     def rotate_vector(self, vector, rotation_matrix):
         return np.dot(rotation_matrix, vector)
 
-    def gyro_callback(self, msg):
-        raw_ang_vel = np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z])
-        R = np.array([
-            [0,  0,  -1],   
-            [-1, 0,  0],
-            [0, 1,  0]
-        ])
-        rotated_ang_vel = self.rotate_vector(raw_ang_vel, R)
-        self.base_ang_vel = torch.tensor(rotated_ang_vel, dtype=torch.float32, device=self.device)
-
     def accel_callback(self, msg):
-    # 1) Extract raw acceleration from IMU message
+        # 1) 提取原始加速度数据
         raw_accel = np.array([
             msg.linear_acceleration.x,
             msg.linear_acceleration.y,
             msg.linear_acceleration.z
         ])
 
-        #    - IMU z -> Robot x
-        #    - IMU y -> Robot -z
-        #    - IMU x -> Robot -y
-        R = np.array([
-            [0,  0,  -1],   
+        # 2) 使用已有的旋转操作进行转换（根据IMU的安装方向）
+        R_mount = np.array([
+            [0,  0, -1],
             [-1, 0,  0],
-            [0, 1,  0]
+            [0,  1,  0]
         ])
+        rotated_accel = self.rotate_vector(raw_accel, R_mount)
 
-        rotated_accel = self.rotate_vector(raw_accel, R)
-
+        # 3) 归一化操作，使得向量长度为1
         norm = np.linalg.norm(rotated_accel)
         if norm > 0:
-            rotated_accel /= norm
+            rotated_accel = rotated_accel / norm
 
-        self.projected_gravity = torch.tensor(rotated_accel, dtype=torch.float32, device=self.device)
+        # 4) 第一次接收到数据时，记录归一化后的重力方向，并计算校准旋转矩阵，
+        #    使得它能将初始重力旋转为理想重力 (0, 0, -1)
+        if self.initial_gravity is None:
+            self.initial_gravity = rotated_accel.copy()
+            target_gravity = np.array([0, 0, -1])
+            self.gravity_calib_matrix = self.compute_rotation_matrix(self.initial_gravity, target_gravity)
+            self.get_logger().info("Accelerometer calibration rotation matrix computed.")
 
+        # 5) 对新接收到的数据先经过已有的旋转和归一化后，再乘以校准旋转矩阵
+        calibrated_accel = np.dot(self.gravity_calib_matrix, rotated_accel)
+        norm = np.linalg.norm(calibrated_accel)
+        if norm > 0:
+            calibrated_accel = calibrated_accel / norm
+
+        # 将校准后的重力数据转换为 torch tensor
+        self.projected_gravity = torch.tensor(calibrated_accel, dtype=torch.float32, device=self.device)
+    # def rotate_vector(self, vector, rotation_matrix):
+    #     return np.dot(rotation_matrix, vector)
+
+    def gyro_callback(self, msg):
+        raw_ang_vel = np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z])
+        R = np.array([
+            [0,  0,  -1],
+            [-1, 0,  0],
+            [0,  1,  0]
+        ])
+        rotated_ang_vel = self.rotate_vector(raw_ang_vel, R)
+
+        # 第一次接收到陀螺仪数据时，记录初始读数作为偏置
+        if not hasattr(self, 'initial_gyro'):
+            self.initial_gyro = rotated_ang_vel
+            self.get_logger().info("Gyro initial calibration set.")
+        
+        # 校正：当前读数减去初始读数，使得理想状态为 0
+        calibrated_ang_vel = rotated_ang_vel - self.initial_gyro
+        self.base_ang_vel = torch.tensor(calibrated_ang_vel, dtype=torch.float32, device=self.device)
+    # def gyro_callback(self, msg):
+    #         raw_ang_vel = np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z])
+    #         R = np.array([
+    #             [0,  0,  -1],   
+    #             [-1, 0,  0],
+    #             [0, 1,  0]
+    #         ])
+    #         rotated_ang_vel = self.rotate_vector(raw_ang_vel, R)
+    #         self.base_ang_vel = torch.tensor(rotated_ang_vel, dtype=torch.float32, device=self.device)
+
+    # def accel_callback(self, msg):
+    #     raw_accel = np.array([
+    #         msg.linear_acceleration.x,
+    #         msg.linear_acceleration.y,
+    #         msg.linear_acceleration.z
+    #     ])
+    #     R = np.array([
+    #         [0,  0,  -1],
+    #         [-1, 0,  0],
+    #         [0, 1,  0]
+    #     ])
+    #     rotated_accel = self.rotate_vector(raw_accel, R)
+
+    #     # 如果初始重力还没有设置（为 None），则进行校准
+    #     if self.initial_gravity is None:
+    #         self.initial_gravity = rotated_accel.copy()
+    #         self.accel_offset = np.array([0, 0, -1]) - self.initial_gravity
+    #         self.get_logger().info("Accelerometer initial calibration set.")
+
+    #     calibrated_accel = rotated_accel + self.accel_offset
+
+    #     norm = np.linalg.norm(calibrated_accel)
+    #     if norm > 0:
+    #         calibrated_accel /= norm
+
+    #     self.projected_gravity = torch.tensor(calibrated_accel, dtype=torch.float32, device=self.device)
 
     def command_callback(self, msg):
     # Ensure we extract all four values correctly
         self.commands = torch.tensor(
-            [msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.z],  # Added msg.linear.z
+            [msg.linear.x*2, msg.linear.y*2, msg.linear.z],  # Added msg.angular.z
+            dtype=torch.float32,
+            device=self.device
+        )
+
+    def height_callback(self, msg):
+# Ensure we extract all four values correctly
+        self.height = torch.tensor(
+            [msg.data],  
             dtype=torch.float32,
             device=self.device
         )
@@ -234,6 +332,7 @@ class MotorSRVNode(Node):
             (self.dof_pos - self.default_dof_pos),  # (8,)
             self.dof_vel * 0.05,  # (8,)
             self.actions,  # (8,)
+            #self.height,
         ], axis=-1).to(self.device)
 
         #self.get_logger().info(f'Observation Buffer: {obs_buf.tolist()}')

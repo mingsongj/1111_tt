@@ -25,9 +25,9 @@ class DynamixelControlNode(Node):
 
         # Default positions
         self.goal_positions = [1205,2890,1205,2890,1956,2147,1956,2147,2048,2048,2048,2048]
-        self.target_positions = [1205,2890,1205,2890,1956,2147,1956,2147,2048,2048,2048,2048] # Target positions for /robot/motor_commands
-        self.motor_commands_available = False  # Flag to detect /robot/motor_commands
-        self.ready_to_move = True  # Flag to control when movement starts
+        self.target_positions = [1205,2890,1205,2890,1956,2147,1956,2147,2048,2048,2048,2048]
+        self.motor_commands_available = False
+        self.ready_to_move = True
 
         # Initialize communication with Dynamixel motors
         self.port_handler = PortHandler(self.DEVICENAME)
@@ -50,22 +50,24 @@ class DynamixelControlNode(Node):
                                                   X_Series["ADDR_GOAL_POSITION"], X_Series["LEN_GOAL_POSITION"])
 
         self.enable_torque()
-        self.set_motor_gains(kp=600, kd=0)
-        #self.move_to_zero_position()
-        
+        self.set_motor_gains(kp=550, kd=15)
 
-        # SyncRead for position and velocity
+        # SyncRead for position, velocity and current
         self.position_read = GroupSyncRead(self.port_handler, self.packet_handler, 
                                            X_Series["ADDR_PRESENT_POSITION"], X_Series["LEN_PRESENT_POSITION"])
         self.velocity_read = GroupSyncRead(self.port_handler, self.packet_handler, 
                                            X_Series["ADDR_PRESENT_VELOCITY"], X_Series["LEN_PRESENT_VELOCITY"])
+        self.current_read = GroupSyncRead(self.port_handler, self.packet_handler,
+                                         X_Series["ADDR_PRESENT_CURRENT"], X_Series["LEN_PRESENT_CURRENT"])
 
         for dxl_id in self.DXL_IDS:
             self.position_read.addParam(dxl_id)
             self.velocity_read.addParam(dxl_id)
+            self.current_read.addParam(dxl_id)
 
         # Create ROS publishers and subscribers
         self.motor_status_publisher = self.create_publisher(Float32MultiArray, 'dynamixel_status', sensor_qos)
+        self.current_publisher = self.create_publisher(Float32MultiArray, 'dynamixel_current', sensor_qos)
 
         # Subscribe to `goal_positions` and `/robot/motor_commands`
         self.goal_position_subscriber = self.create_subscription(
@@ -82,7 +84,7 @@ class DynamixelControlNode(Node):
         )
 
         # Timer for control loop
-        self.timer = self.create_timer(0.1, self.control_loop)
+        self.timer = self.create_timer(0.05, self.control_loop)
 
     def enable_torque(self):
         for dxl_id in self.DXL_IDS:
@@ -95,44 +97,33 @@ class DynamixelControlNode(Node):
                 self.get_logger().error(f"Failed to enable torque for Motor {dxl_id}, error: {dxl_comm_result}")
 
     def set_motor_gains(self, kp=640, kd=0):
-        """
-        Sets the Kp and Kd values for all motors.
-
-        :param kp: Proportional gain (default = 640)
-        :param kd: Derivative gain (default = 0)
-        """
-        kp = int(kp)  # Convert to integer
-        kd = int(kd)  # Convert to integer
+        kp = int(kp)
+        kd = int(kd)
 
         for dxl_id in self.DXL_IDS:
-            # Ensure the motor is in position control mode
             operating_mode, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(
-                self.port_handler, dxl_id, 11  # Address 11: Operating Mode
+                self.port_handler, dxl_id, 11
             )
 
-            if operating_mode not in [3, 4]:  # Check if in Position Control Mode
+            if operating_mode not in [3, 4]:
                 self.get_logger().error(f"Motor {dxl_id} is not in Position Control Mode! Current mode: {operating_mode}")
-                continue  # Skip this motor if not in the correct mode
+                continue
 
-            # Set Kp (Proportional Gain)
             dxl_comm_result, dxl_error = self.packet_handler.write2ByteTxRx(
-                self.port_handler, dxl_id, 84, kp  # Address 84: Position P Gain
+                self.port_handler, dxl_id, 84, kp
             )
             if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
                 self.get_logger().error(f"Failed to set Kp for Motor {dxl_id}, error: {dxl_comm_result}")
 
-            # Set Kd (Derivative Gain)
             dxl_comm_result, dxl_error = self.packet_handler.write2ByteTxRx(
-                self.port_handler, dxl_id, 80, kd  # Address 80: Position D Gain
+                self.port_handler, dxl_id, 80, kd
             )
             if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
                 self.get_logger().error(f"Failed to set Kd for Motor {dxl_id}, error: {dxl_comm_result}")
 
         self.get_logger().info(f"Set Kp={kp}, Kd={kd} for all motors.")
 
-
     def move_to_zero_position(self):
-        """ Move all motors to zero position and wait for 0.1s before proceeding. """
         for dxl_id in self.DXL_IDS:
             param_goal_position = [
                 DXL_LOBYTE(DXL_LOWORD(2048)),
@@ -146,31 +137,22 @@ class DynamixelControlNode(Node):
         self.goal_position_write.clearParam()
         self.get_logger().info("Motors moved to zero position, waiting 0.1s...")
 
-        time.sleep(1)  # Wait for 0.1 seconds
-        self.ready_to_move = True  # Now ready to accept movement commands
+        time.sleep(1)
+        self.ready_to_move = True
         self.get_logger().info("Ready to move to target positions.")
 
-
     def goal_position_callback(self, msg):
-        if not self.motor_commands_available:  # Only process goal_positions if motor_commands is not available
+        if not self.motor_commands_available:
             if len(msg.data) == len(self.DXL_IDS):
                 self.goal_positions = [int(pos) for pos in msg.data]
-            #     self.get_logger().info(f"Received goal positions: {self.goal_positions}")
-            # else:
-            #     self.get_logger().warn("Received goal position size mismatch!")
 
     def motor_commands_callback(self, msg):
-        if len(msg.data) == 8:  # Validate the size of the motor_commands message
-            self.motor_commands_available = True  # Set the flag to switch to /robot/motor_commands
-            # Update the target positions for specified motors
+        if len(msg.data) == 8:
+            self.motor_commands_available = True
             for i, motor_index in enumerate([0, 1, 2, 3, 4, 5, 6, 7]):
                 self.target_positions[motor_index] = int(msg.data[i])
-            # Set positions of motors 2, 5, 8, 11 to 2048
             for motor_index in [8, 9, 10, 11]:
                 self.target_positions[motor_index] = 2048
-            #self.get_logger().info(f"Received motor commands: {self.target_positions}")
-        #else:
-            #self.get_logger().warn("Received motor command size mismatch!")
 
     def convert_to_signed(self, value, bit_length=32):
         if value >= (1 << (bit_length - 1)):
@@ -178,17 +160,15 @@ class DynamixelControlNode(Node):
         return value
 
     def control_loop(self):
-
         # Use the appropriate positions based on whether motor_commands is available
         raw_positions = self.target_positions if self.motor_commands_available else self.goal_positions
-        # Define the motor mapping
         motor_mapping = {
             0: raw_positions[0],  1: raw_positions[1],  2: raw_positions[2],  3: raw_positions[3],
             4: raw_positions[4],  5: raw_positions[5],  6: raw_positions[6], 7: raw_positions[7],
-            8: 2048, 9: 2048, 10: 2048, 11: 2048  # Fixed values for these motors
+            8: 2048, 9: 2048, 10: 2048, 11: 2048
         }
 
-        # Send goal positions to the motors
+        # Send goal positions
         for dxl_id in self.DXL_IDS:
             param_goal_position = [
                 DXL_LOBYTE(DXL_LOWORD(motor_mapping[dxl_id])),
@@ -201,23 +181,31 @@ class DynamixelControlNode(Node):
         self.goal_position_write.txPacket()
         self.goal_position_write.clearParam()
 
-        # Publish motor status
+        # Read position, velocity and current
         self.position_read.txRxPacket()
         self.velocity_read.txRxPacket()
+        self.current_read.txRxPacket()
 
-        msg = Float32MultiArray()
+        # Publish motor status (position and velocity)
+        status_msg = Float32MultiArray()
         motor_data = []
-
         for dxl_id in self.DXL_IDS:
             pos = self.position_read.getData(dxl_id, X_Series["ADDR_PRESENT_POSITION"], 4)
             vel = self.velocity_read.getData(dxl_id, X_Series["ADDR_PRESENT_VELOCITY"], 4)
             vel = self.convert_to_signed(vel, 32)
-
             motor_data.extend([float(dxl_id), float(pos), float(vel)])
+        status_msg.data = motor_data
+        self.motor_status_publisher.publish(status_msg)
 
-        msg.data = motor_data
-        self.motor_status_publisher.publish(msg)
-
+        # Publish current data
+        current_msg = Float32MultiArray()
+        current_data = []
+        for dxl_id in self.DXL_IDS:
+            curr = self.current_read.getData(dxl_id, X_Series["ADDR_PRESENT_CURRENT"], 2)
+            curr = self.convert_to_signed(curr, 16)  # Current is 16-bit signed
+            current_data.extend([float(dxl_id), float(curr)])
+        current_msg.data = current_data
+        self.current_publisher.publish(current_msg)
 
 def main(): 
     rclpy.init()
@@ -227,4 +215,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

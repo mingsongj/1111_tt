@@ -22,10 +22,10 @@ class KeyboardControlNode(Node):
         self.A_x = 0.0
         self.A_y = 0.0
         self.ang_vel = 0.0
-        self.height = 0.0  # New height variable
-        self.speed_increment = 0.1
-        self.angular_increment = 0.04
-        self.height_increment = 0.02  # Smaller increment for fine control
+        self.height = 0.2  # New height variable
+        self.speed_increment = 0.25
+        self.angular_increment = 0.02
+        self.height_increment = 0.01  # Smaller increment for fine control
 
         # Store previous values for change detection
         self.prev_A_x = self.A_x
@@ -77,11 +77,19 @@ class KeyboardControlNode(Node):
             self.ang_vel = clamp(self.ang_vel - self.angular_increment, -1.0, 1.0)
             updated = True
         elif key == '\x1b[A':  # Up arrow
-            self.height = clamp(self.height + self.height_increment, 0.1, 0.35)  # Adjust max height as needed
+            self.height = clamp(self.height + self.height_increment, 0.1, 0.28)
             updated = True
         elif key == '\x1b[B':  # Down arrow
-            self.height = clamp(self.height - self.height_increment, 0.1, 0.35)  # Adjust min height as needed
+            self.height = clamp(self.height - self.height_increment, 0.1, 0.28)
             updated = True
+        elif key == 'x':  # Reset all values to zero
+            self.A_x = 0.0
+            self.A_y = 0.0
+            self.ang_vel = 0.0
+            #self.height = 0.0
+            updated = True
+            self.get_logger().info("All values reset to zero.")
+
         elif key == 'q':  # Quit the program
             self.get_logger().info("Exiting keyboard control node.")
             rclpy.shutdown()
@@ -90,13 +98,14 @@ class KeyboardControlNode(Node):
         twist_msg = Twist()
         twist_msg.linear.x = apply_deadzone(self.A_x)
         twist_msg.linear.y = apply_deadzone(self.A_y)
-        twist_msg.linear.z = apply_deadzone(self.height)  # Height control
-        twist_msg.angular.z = apply_deadzone(self.ang_vel)
+        twist_msg.linear.z = apply_deadzone(self.ang_vel)
+        twist_msg.angular.z = apply_deadzone(self.height)
         self.publisher_.publish(twist_msg)
 
         # Only log changes in values
         if updated:
             self.get_logger().info(f"A_x: {self.A_x:.2f}, A_y: {self.A_y:.2f}, ang_vel: {self.ang_vel:.2f}, height: {self.height:.2f}")
+
 
         # Store previous values
         self.prev_A_x = self.A_x

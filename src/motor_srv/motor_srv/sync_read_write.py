@@ -18,7 +18,7 @@ class DynamixelControlNode(Node):
                 )
 
         # Dynamixel settings
-        self.DEVICENAME = '/dev/ttyUSB0'
+        self.DEVICENAME = '/dev/ttyUSB1'
         self.BAUDRATE = 4000000
         self.PROTOCOL_VERSION = 2.0
         self.DXL_IDS = list([0,1,2,3,4,5,6,7,8,9,10,11])  # Motor IDs from 0 to 11
@@ -26,6 +26,10 @@ class DynamixelControlNode(Node):
         # Default positions
         self.goal_positions = [1205,2890,1205,2890,1956,2147,1956,2147,2048,2048,2048,2048]
         self.target_positions = [1205,2890,1205,2890,1956,2147,1956,2147,2048,2048,2048,2048]
+
+        # Default positions
+        # self.goal_positions = [2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048]
+        # self.target_positions = [2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048]
         self.motor_commands_available = False
         self.ready_to_move = True
 

@@ -46,7 +46,7 @@ class COTCalculatorNode(Node):
         self.timer = self.create_timer(0.1, self.calculate_and_publish_cot)
 
         # CSV setup
-        self.csv_file = open(f'100_walk_mud_0.75_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv', 'w', newline='')
+        self.csv_file = open(f'0_walk_rock_cw_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv', 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
         # Updated CSV header to include currents for all 12 motors and their sum
         header = ['time', 'cot_mJ_per_m', 'distance_m', 'power_mW'] + \

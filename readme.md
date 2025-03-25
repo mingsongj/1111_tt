@@ -4,7 +4,11 @@ source install/setup.bash
 sudo usermod -a -G dialout admin
 ``
 `ls -l /dev/ttyUSB*`sudo chmod 777 /dev/ttyUSB0
+ros2 topic pub --once /arduino/command std_msgs/msg/String "data: 'i'"
 
+ls -l /dev/ttyACM*
+sudo chmod 777 /dev/ttyUSB1
+sudo chmod 777 /dev/ttyACM0
 ros2 topic pub --once /arduino/command std_msgs/msg/String "{data: 'i,5'}"
 
 ros2 launch realsense2_camera rs_launch.py enable_gyro:=true enable_accel:=true

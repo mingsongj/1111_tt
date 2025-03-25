@@ -17,7 +17,7 @@ class ArduinoSerialNode(Node):
         )
 
         # Serial parameters
-        self.serial_port = '/dev/ttyACM0'  # Adjust based on your system (e.g., '/dev/ttyUSB0' or 'COM3' on Windows)
+        self.serial_port = '/dev/ttyUSB0'  # Adjust based on your system (e.g., '/dev/ttyUSB0' or 'COM3' on Windows)
         self.baud_rate = 115200
 
         # Publishers for all sensor data
@@ -25,7 +25,11 @@ class ArduinoSerialNode(Node):
         self.pressure_pub = self.create_publisher(Float32, 'arduino/pressure', sensor_qos)
         self.latitude_pub = self.create_publisher(Float32, 'arduino/latitude', sensor_qos)
         self.longitude_pub = self.create_publisher(Float32, 'arduino/longitude', sensor_qos)
-        self.command_sub = self.create_subscription(String, 'arduino/command', self.command_callback, sensor_qos)
+
+        # Subscriber for sending commands to Arduino
+        self.command_sub = self.create_subscription(
+            String, 'arduino/command', self.command_callback, sensor_qos
+        )
 
         # Connect to serial port
         try:
@@ -44,9 +48,9 @@ class ArduinoSerialNode(Node):
         while rclpy.ok():
             try:
                 line = self.serial_conn.readline().decode('utf-8').strip()
-                # Check for initialization messages first
-                if "GNSS 初始化成功" in line or "u-blox GNSS 模块启动" in line:
-                    self.get_logger().info(f"Arduino init message: {line}")
+                # Check for initialization or status messages
+                if any(x in line for x in ["Starting", "GNSS OK", "VL53L4CD OK", "Setup complete", "Inflating", "Deflating", "stopped"]):
+                    self.get_logger().info(f"Arduino status: {line}")
                     continue
 
                 # Parse sensor data
@@ -57,7 +61,7 @@ class ArduinoSerialNode(Node):
                         self.get_logger().warn(f"Invalid data format: {line}")
                         continue
 
-                    # Parse height and pressure data
+                    # Parse height, pressure, and GPS data
                     height_data = sections[0].replace("Height: ", "")
                     pressure_data = sections[1].replace("Pressure: ", "")
                     gps_data = sections[2].replace("GPS: Lat: ", "").split(", Lon: ")
@@ -91,15 +95,38 @@ class ArduinoSerialNode(Node):
             except serial.SerialException as e:
                 self.get_logger().error(f"Serial error: {e}")
                 break
+            except UnicodeDecodeError as e:
+                self.get_logger().warn(f"Failed to decode serial data: {e}")
+                continue
 
     def command_callback(self, msg):
         """ Listen to ROS2 topic and send commands to Arduino """
         command = msg.data.strip()
-        if command.startswith("i,") or command.startswith("d,"):
+        
+        # Split the command into parts (e.g., 'i,5' -> ['i', '5'])
+        parts = command.split(',')
+        
+        # Check for valid commands
+        if len(parts) == 1 and parts[0] in ['i', 'k']:  # Original single-letter commands
             self.serial_conn.write((command + "\n").encode('utf-8'))
-            self.get_logger().info(f"Sent command: {command}")
+            self.get_logger().info(f"Sent command to Arduino: {command}")
+        elif len(parts) == 2 and parts[0] in ['i', 'k']:  # New commands with numbers (e.g., 'i,5' or 'k,6')
+            try:
+                # Ensure the second part is a valid number
+                number = int(parts[1])  # Convert to integer to validate
+                self.serial_conn.write((command + "\n").encode('utf-8'))
+                self.get_logger().info(f"Sent command to Arduino: {command}")
+            except ValueError:
+                self.get_logger().warn(f"Invalid number in command: {command}")
         else:
             self.get_logger().warn(f"Invalid command received: {command}")
+
+    def destroy_node(self):
+        """ Clean up resources when shutting down """
+        super().destroy_node()
+        if hasattr(self, 'serial_conn') and self.serial_conn.is_open:
+            self.serial_conn.close()
+            self.get_logger().info("Serial connection closed.")
 
 def main(args=None):
     rclpy.init(args=args)
@@ -109,7 +136,6 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info("Shutting down Arduino Serial Node...")
     finally:
-        node.serial_conn.close()
         node.destroy_node()
         rclpy.shutdown()
 

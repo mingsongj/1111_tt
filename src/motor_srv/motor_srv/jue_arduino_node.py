@@ -17,7 +17,7 @@ class ArduinoSerialNode(Node):
         )
 
         # Serial parameters
-        self.serial_port = '/dev/ttyUSB0'  # Adjust based on your system (e.g., '/dev/ttyUSB0' or 'COM3' on Windows)
+        self.serial_port = '/dev/ttyUSB1'  # Adjust based on your system (e.g., '/dev/ttyUSB0' or 'COM3' on Windows)
         self.baud_rate = 115200
 
         # Publishers for all sensor data

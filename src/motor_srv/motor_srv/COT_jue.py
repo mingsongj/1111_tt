@@ -46,7 +46,7 @@ class COTCalculatorNode(Node):
         self.timer = self.create_timer(0.1, self.calculate_and_publish_cot)
 
         # CSV setup
-        self.csv_file = open(f'0_walk_rock_cw_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv', 'w', newline='')
+        self.csv_file = open(f'demo_campus_nochange_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv', 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
         # Updated CSV header to include currents for all 12 motors and their sum
         header = ['time', 'cot_mJ_per_m', 'distance_m', 'power_mW'] + \
@@ -96,7 +96,7 @@ class COTCalculatorNode(Node):
 
         if self.latest_lat == 0.0 and self.latest_lon == 0.0:
             self.cot_pub.publish(Float32(data=0.0))
-            self.get_logger().info(f"COT: 0.00 mJ/m (No GPS fix yet)")
+            #self.get_logger().info(f"COT: 0.00 mJ/m (No GPS fix yet)")
             # Log with all currents and their sum
             self.csv_writer.writerow(
                 [time_str, 0.0, self.total_distance, self.latest_power] + 
@@ -112,7 +112,7 @@ class COTCalculatorNode(Node):
             self.prev_time = current_time
             self.has_valid_gps = True
             self.cot_pub.publish(Float32(data=0.0))
-            self.get_logger().info(f"COT: 0.00 mJ/m (First valid GPS: Lat={self.latest_lat}, Lon={self.latest_lon})")
+            #self.get_logger().info(f"COT: 0.00 mJ/m (First valid GPS: Lat={self.latest_lat}, Lon={self.latest_lon})")
             # Log with all currents and their sum
             self.csv_writer.writerow(
                 [time_str, 0.0, self.total_distance, self.latest_power] + 
@@ -155,10 +155,10 @@ class COTCalculatorNode(Node):
             cot = 0.0
 
         self.cot_pub.publish(Float32(data=cot))
-        self.get_logger().info(
-            f"COT: {cot:.2f} mJ/m, Energy: {self.total_energy:.2f} mJ, Distance: {self.total_distance:.2f} m, "
-            f"Power: {self.latest_power:.2f} mW, Currents: {self.latest_currents}, Total Current: {total_current:.2f} mA"
-        )
+        # self.get_logger().info(
+        #     f"COT: {cot:.2f} mJ/m, Energy: {self.total_energy:.2f} mJ, Distance: {self.total_distance:.2f} m, "
+        #     f"Power: {self.latest_power:.2f} mW, Currents: {self.latest_currents}, Total Current: {total_current:.2f} mA"
+        # )
 
         # Write to CSV with power, all currents, and their sum
         self.csv_writer.writerow(

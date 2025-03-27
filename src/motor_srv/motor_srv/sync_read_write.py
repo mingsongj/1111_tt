@@ -18,7 +18,7 @@ class DynamixelControlNode(Node):
                 )
 
         # Dynamixel settings
-        self.DEVICENAME = '/dev/ttyUSB1'
+        self.DEVICENAME = '/dev/ttyUSB0'
         self.BAUDRATE = 4000000
         self.PROTOCOL_VERSION = 2.0
         self.DXL_IDS = list([0,1,2,3,4,5,6,7,8,9,10,11])  # Motor IDs from 0 to 11
@@ -54,7 +54,7 @@ class DynamixelControlNode(Node):
                                                   X_Series["ADDR_GOAL_POSITION"], X_Series["LEN_GOAL_POSITION"])
 
         self.enable_torque()
-        self.set_motor_gains(kp=550, kd=15)
+        self.set_motor_gains(kp=800, kd=15)
 
         # SyncRead for position, velocity and current
         self.position_read = GroupSyncRead(self.port_handler, self.packet_handler, 

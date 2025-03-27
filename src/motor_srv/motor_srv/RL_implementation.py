@@ -82,8 +82,8 @@ class MotorSRVNode(Node):
 
         # Load the policy model and configuration file
         self.policy = self.load_policy(
-            "src/mingsong_turtle_try/src/motor_srv/models/model_700.pt",
-            obs_dim=33,  # Observation dimension (34 for height changable model, 33 for height non-changable model.)
+            "src/mingsong_turtle_try/src/motor_srv/models/height_700.pt",
+            obs_dim=34,  # Observation dimension (34 for height changable model, 33 for height non-changable model.)
             action_dim=8,  # Action dimension
             actor_hidden_dims=[512, 256, 128],
             critic_hidden_dims=[512, 256, 128],
@@ -258,7 +258,7 @@ class MotorSRVNode(Node):
     def command_callback(self, msg):
     # Ensure we extract all four values correctly
         self.commands = torch.tensor(
-            [msg.linear.x*2, msg.linear.y*2, msg.linear.z],  # Added msg.angular.z
+            [msg.linear.x*2, msg.linear.y*2, msg.linear.z, msg.angular.z],  # Added msg.angular.z
             dtype=torch.float32,
             device=self.device
         )
